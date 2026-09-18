@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  oopsie:
+    build: .
+    container_name: oopsie_challenge
+    ports:
+      - "1339:1337"
+    restart: unless-stopped
+    mem_limit: 128m
