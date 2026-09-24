@@ -1,18 +1,13 @@
-NAME = Oopsie
+CC = gcc
+CFLAGS = -fno-stack-protector -no-pie -Wall -Wextra
+TARGET = oopsie
 
-CC = cc
-CFLAGS = -Wall -Wextra -Werror -fno-stack-protector -z execstack -no-pie -fomit-frame-pointer -D_GNU_SOURCE
+all: $(TARGET)
 
-SRCS = main.c
-
-all: $(NAME)
-
-$(NAME): $(SRCS)
-	$(CC) $(CFLAGS) $(SRCS) -o $(NAME)
+$(TARGET): main.c
+	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
-	rm -f $(NAME)
+	rm -f $(TARGET)
 
-re: clean all
-
-.PHONY: all clean re
+.PHONY: all clean

@@ -1,0 +1,141 @@
+================================================================================
+CHALLENGE 01: THE WRONG INPUT — BUFFER OVERFLOW
+================================================================================
+Difficulty : [★☆☆☆☆] Beginner
+Category   : Binary Exploitation (pwn) / Memory Corruption
+Directory  : Oopsie/
+================================================================================
+
+[1. OVERVIEW]
+--------------------------------------------------------------------------------
+Welcome to your first step into binary exploitation!
+
+In high-level programming languages (like Python or JavaScript), lists and 
+strings automatically expand when you add more data, or throw an error when 
+you try to access out-of-bounds elements. 
+
+In low-level languages like C, however, memory management is left entirely to 
+the programmer. If a program allocates space for 32 characters on the stack 
+and writes 100 characters into it without checking the size, the extra bytes 
+do not disappear: they spill over and overwrite whatever data happens to live 
+next to that buffer in memory.
+
+This challenge demonstrates the fundamental vulnerability that started the entire 
+field of binary exploitation: the stack buffer overflow.
+
+
+[2. CHALLENGE DESCRIPTION]
+--------------------------------------------------------------------------------
+"Something goes wrong when your input is too long. Find out why."
+
+You are provided with:
+  • The binary executable: ./Oopsie (or ./chall)
+  • The C source code:     main.c
+
+Your task in this introductory challenge is not necessarily to write a complex 
+exploit, but to investigate the crash, inspect the stack, and understand what 
+is happening under the hood when input exceeds the allocated buffer.
+
+
+[3. CODE ANALYSIS]
+--------------------------------------------------------------------------------
+Looking inside main.c:
+
+    void vulnerable(void)
+    {
+        char buffer[32];
+
+        printf("Enter your name: ");
+        gets(buffer);
+        printf("Hello %s\n", buffer);
+    }
+
+    void win(void)
+    {
+        puts("Congratulations!");
+        puts(flag);
+    }
+
+Notice the key flaw:
+  1. `buffer` is declared as an array of 32 bytes (`char buffer[32]`).
+  2. The function `gets(buffer)` is used to read input from standard input.
+  3. `gets()` has no parameter for the maximum number of bytes to read! 
+     It keeps reading characters from stdin until it encounters a newline ('\n') 
+     or EOF, blindly writing every byte into consecutive memory addresses.
+
+
+[4. WHAT IS HAPPENING ON THE STACK?]
+--------------------------------------------------------------------------------
+When `vulnerable()` is called, the CPU sets up a "stack frame" in memory:
+
+    Lower Addresses (Top of Stack)
+    |----------------------------------|  <-- rsp (Stack Pointer)
+    |  buffer [32 bytes]               |  <-- gets(buffer) starts writing here
+    |----------------------------------|
+    |  Saved RBP (Base Pointer) [8B]   |  <-- rbp
+    |----------------------------------|
+    |  Saved Return Address (RIP) [8B] |  <-- Where vulnerable() returns to
+    |----------------------------------|
+    Higher Addresses (Bottom of Stack)
+
+When you enter normal input (e.g., "Alice" - 5 bytes):
+  • "Alice\0" fits comfortably within the 32-byte buffer.
+  • The saved RBP and return address remain untouched.
+  • The function finishes, looks up the return address, and returns smoothly.
+
+When you enter excessive input (e.g., 48 x 'A'):
+  • The first 32 'A's fill up `buffer`.
+  • The next 8 'A's overwrite `Saved RBP` with 0x4141414141414141.
+  • The next 8 'A's overwrite `Saved RIP` with 0x4141414141414141!
+  • When `vulnerable()` reaches the `ret` instruction, the CPU pops that 
+    corrupted value (0x4141414141414141) into the Instruction Pointer (RIP) 
+    and attempts to execute code at that invalid address.
+  • The operating system detects this illegal memory access and kills the 
+    process with a Segmentation Fault (SIGSEGV).
+
+
+[5. HANDS-ON INVESTIGATION]
+--------------------------------------------------------------------------------
+1. Test with small input:
+   $ ./Oopsie
+   Enter your name: Alice
+   Hello Alice
+
+2. Test with long input:
+   $ python3 -c "print('A'*32)" | ./Oopsie
+   $ python3 -c "print('A'*40)" | ./Oopsie
+   $ python3 -c "print('A'*60)" | ./Oopsie
+   [1]    Segmentation fault (core dumped)
+
+3. Inspect the crash with GDB:
+   $ gdb ./Oopsie
+   (gdb) run
+   Enter your name: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+   Program received signal SIGSEGV, Segmentation fault.
+   0x0000000000401234 in vulnerable ()
+
+   Check the registers:
+   (gdb) info registers
+   Notice what value is in $rbp and where the instruction pointer is pointing!
+
+
+[6. CONCEPTS LEARNED]
+--------------------------------------------------------------------------------
+• Stack Memory    : How local variables and execution metadata reside together.
+• Buffer Size     : Fixed-size memory allocations and boundary limits.
+• Segmentation Fault: Hardware/OS signal generated when accessing unmapped memory.
+• Unchecked Input : Why obsolete functions like `gets()` must never be used.
+• Stack Framing   : How caller-saved registers and return addresses are organized.
+
+
+[7. PROGRESSIVE HINTS]
+--------------------------------------------------------------------------------
+Hint 1: What happens when you give the program more than 32 characters?
+        Try feeding 33, 40, 48, and 56 characters into the program.
+
+Hint 2: Run the program inside GDB (`gdb ./Oopsie`), type `run`, paste 60 'A's,
+        and observe the exact error message and the registers (`info registers`).
+
+Hint 3: What is stored immediately after `buffer` in the stack frame? 
+        How does the CPU know where to return once `vulnerable()` finishes?
+================================================================================

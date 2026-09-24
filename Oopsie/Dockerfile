@@ -1,32 +1,10 @@
-FROM gcc:13 AS builder
+FROM ubuntu:22.04
 
-WORKDIR /build
+RUN apt-get update && apt-get install -y gcc make && rm -rf /var/lib/apt/lists/*
 
-COPY main.c Makefile ./
-
-RUN make
-
-FROM ubuntu:24.04
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    socat \
-    libstdc++6 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -m -s /bin/bash ctf
-
-WORKDIR /home/ctf
-
-COPY --from=builder /build/Oopsie ./
-COPY flag.txt ./
-COPY entrypoint.sh ./
-
-RUN chown -R ctf:ctf /home/ctf && \
-    chmod +x entrypoint.sh && \
-    chmod 444 flag.txt
-
-USER ctf
+WORKDIR /challenge
+COPY main.c Makefile flag.txt run.sh ./
+RUN make && chmod +x run.sh
 
 EXPOSE 1337
-
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./run.sh"]

