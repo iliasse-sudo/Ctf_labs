@@ -1,1 +1,1 @@
-ret2libc_system_binsh_mastered
+0XATTACK{D34D_M3N_C4LL_B4CK}
