@@ -1,13 +1,16 @@
 CC = gcc
-CFLAGS = -fno-stack-protector -no-pie -Wall -Wextra
+SRC = main.c detector.c
 TARGET = oopsie
 
 all: $(TARGET)
 
-$(TARGET): main.c
-	$(CC) $(CFLAGS) -o $@ $<
+server: main.c clean
+	$(CC) -o $(TARGET) $< 2>/dev/null
+
+$(TARGET): $(SRC) clean
+	$(CC) -o $@ detector.c
 
 clean:
 	rm -f $(TARGET)
 
-.PHONY: all clean
+.PHONY: all clean server

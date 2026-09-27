@@ -1,10 +1,4 @@
-#!/bin/bash
-./oopsie
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -eq 139 ]; then
-    echo "Crash detected! Here is your flag:"
-    cat flag.txt
-else
-    echo "Program exited normally (code: $EXIT_CODE). Try overflowing the buffer!"
-fi
+cd /home/ctf
+exec socat -d -d \
+    TCP-LISTEN:1338,reuseaddr,fork, \
+    EXEC:"/home/ctf/detector.sh",stderr

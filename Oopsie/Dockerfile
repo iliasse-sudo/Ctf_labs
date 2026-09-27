@@ -1,10 +1,33 @@
-FROM ubuntu:22.04
+FROM gcc:13 AS builder
 
-RUN apt-get update && apt-get install -y gcc make && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
 
-WORKDIR /challenge
-COPY main.c Makefile flag.txt run.sh ./
-RUN make && chmod +x run.sh
+COPY main.c Makefile ./
 
-EXPOSE 1337
+RUN make server
+
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat \
+    libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash ctf
+
+WORKDIR /home/ctf
+
+COPY --from=builder /build/oopsie ./
+COPY flag.txt ./
+COPY run.sh ./
+COPY detector.sh ./
+
+RUN chown -R ctf:ctf /home/ctf && \
+    chmod +x run.sh detector.sh && \
+    chmod 444 flag.txt
+
+USER ctf
+
+EXPOSE 1338
+
 ENTRYPOINT ["./run.sh"]

@@ -1,141 +1,201 @@
 ================================================================================
-CHALLENGE 01: THE WRONG INPUT — BUFFER OVERFLOW
+BUFFER OVERFLOW FUNDAMENTALS — A HANDS-ON INTRODUCTION
 ================================================================================
-Difficulty : [★☆☆☆☆] Beginner
-Category   : Binary Exploitation (pwn) / Memory Corruption
-Directory  : Oopsie/
+Level      : Beginner
+Topic      : Memory Corruption / Stack Buffer Overflow
+Binary     : oopsie (compiled from main.c)
 ================================================================================
 
-[1. OVERVIEW]
+[1. WHY THIS MATTERS]
 --------------------------------------------------------------------------------
-Welcome to your first step into binary exploitation!
+In high-level languages (Python, JavaScript, Java), arrays and strings manage
+their own memory. Try to access index 100 of a 5-element list? You get an
+exception. Append to a string? It grows automatically.
 
-In high-level programming languages (like Python or JavaScript), lists and 
-strings automatically expand when you add more data, or throw an error when 
-you try to access out-of-bounds elements. 
+In C, memory is manual. If you declare `char buffer[32]` and write 100 bytes
+into it, the extra 68 bytes don't vanish — they spill into adjacent memory.
+This is a **stack buffer overflow**, the vulnerability that launched the entire
+field of binary exploitation.
 
-In low-level languages like C, however, memory management is left entirely to 
-the programmer. If a program allocates space for 32 characters on the stack 
-and writes 100 characters into it without checking the size, the extra bytes 
-do not disappear: they spill over and overwrite whatever data happens to live 
-next to that buffer in memory.
+This guide uses a tiny program (`oopsie`) to show exactly what happens on the
+stack when input exceeds its buffer.
 
-This challenge demonstrates the fundamental vulnerability that started the entire 
-field of binary exploitation: the stack buffer overflow.
-
-
-[2. CHALLENGE DESCRIPTION]
+[2. THE VULNERABLE CODE]
 --------------------------------------------------------------------------------
-"Something goes wrong when your input is too long. Find out why."
+File: main.c
 
-You are provided with:
-  • The binary executable: ./Oopsie (or ./chall)
-  • The C source code:     main.c
-
-Your task in this introductory challenge is not necessarily to write a complex 
-exploit, but to investigate the crash, inspect the stack, and understand what 
-is happening under the hood when input exceeds the allocated buffer.
-
-
-[3. CODE ANALYSIS]
---------------------------------------------------------------------------------
-Looking inside main.c:
+    #include <stdio.h>
+    #include <string.h>
 
     void vulnerable(void)
     {
-        char buffer[32];
+        char    buffer[32];
 
         printf("Enter your name: ");
+        memset(buffer, 0, 32);
         gets(buffer);
         printf("Hello %s\n", buffer);
     }
 
-    void win(void)
+    int main(void)
     {
-        puts("Congratulations!");
-        puts(flag);
+        setvbuf(stdout, NULL, _IONBF, 0);
+        vulnerable();
+        return 0;
     }
 
-Notice the key flaw:
-  1. `buffer` is declared as an array of 32 bytes (`char buffer[32]`).
-  2. The function `gets(buffer)` is used to read input from standard input.
-  3. `gets()` has no parameter for the maximum number of bytes to read! 
-     It keeps reading characters from stdin until it encounters a newline ('\n') 
-     or EOF, blindly writing every byte into consecutive memory addresses.
+Key observations:
+  1. `buffer` is exactly 32 bytes on the stack.
+  2. `gets(buffer)` reads from stdin until newline or EOF — **with no limit**.
+  3. `memset` zeroes the buffer first, but that doesn't protect against overflow.
 
+`gets()` was removed from the C standard (C11) because it is fundamentally
+unsafe. It remains in many codebases for backward compatibility.
 
-[4. WHAT IS HAPPENING ON THE STACK?]
+[3. STACK FRAME LAYOUT]
 --------------------------------------------------------------------------------
-When `vulnerable()` is called, the CPU sets up a "stack frame" in memory:
+When `vulnerable()` is called, the CPU builds a stack frame:
 
-    Lower Addresses (Top of Stack)
-    |----------------------------------|  <-- rsp (Stack Pointer)
-    |  buffer [32 bytes]               |  <-- gets(buffer) starts writing here
-    |----------------------------------|
-    |  Saved RBP (Base Pointer) [8B]   |  <-- rbp
-    |----------------------------------|
-    |  Saved Return Address (RIP) [8B] |  <-- Where vulnerable() returns to
-    |----------------------------------|
-    Higher Addresses (Bottom of Stack)
+    Higher Addresses (growing "down" on x86-64)
+    +---------------------------+
+    | Saved RIP (return addr)  |  8 bytes  <-- Overwritten at offset 40
+    +---------------------------+
+    | Saved RBP (base pointer) |  8 bytes  <-- Overwritten at offset 32
+    +---------------------------+
+    | buffer[0]                |  \
+    | buffer[1]                |   |  32 bytes total
+    | ...                      |   |  (buffer[0] at lowest address)
+    | buffer[31]               |  /
+    +---------------------------+
+    Lower Addresses
 
-When you enter normal input (e.g., "Alice" - 5 bytes):
-  • "Alice\0" fits comfortably within the 32-byte buffer.
-  • The saved RBP and return address remain untouched.
-  • The function finishes, looks up the return address, and returns smoothly.
+The stack grows toward lower addresses. `gets()` writes upward from
+`buffer[0]` toward higher addresses — directly toward saved RBP and RIP.
 
-When you enter excessive input (e.g., 48 x 'A'):
-  • The first 32 'A's fill up `buffer`.
-  • The next 8 'A's overwrite `Saved RBP` with 0x4141414141414141.
-  • The next 8 'A's overwrite `Saved RIP` with 0x4141414141414141!
-  • When `vulnerable()` reaches the `ret` instruction, the CPU pops that 
-    corrupted value (0x4141414141414141) into the Instruction Pointer (RIP) 
-    and attempts to execute code at that invalid address.
-  • The operating system detects this illegal memory access and kills the 
-    process with a Segmentation Fault (SIGSEGV).
+[4. WHAT HAPPENS WITH DIFFERENT INPUTS]
+--------------------------------------------------------------------------------
+Input: "Alice" (5 chars + null = 6 bytes)
+  - Fits in buffer. RBP and RIP untouched. Program returns normally.
 
+Input: 32 'A's
+  - Fills buffer exactly. RBP and RIP still intact. Returns normally.
+
+Input: 33 'A's
+  - Buffer full. 1 byte spills into saved RBP (lowest byte).
+
+Input: 40 'A's (32 + 8)
+  - Buffer full. Saved RBP completely overwritten with 0x4141414141414141.
+  - Saved RIP still intact. Function returns to correct address, but RBP
+    is corrupted — may cause issues in caller.
+
+Input: 48 'A's (32 + 8 + 8)
+  - Buffer full. Saved RBP overwritten. **Saved RIP overwritten with
+    0x4141414141414141.**
+  - When `vulnerable()` executes `ret`, CPU pops this value into RIP.
+  - CPU tries to execute at address 0x4141414141414141 — not mapped.
+  - **Segmentation fault (SIGSEGV).**
+
+Input: 60+ 'A's
+  - Same crash, more overwritten data past RIP.
 
 [5. HANDS-ON INVESTIGATION]
 --------------------------------------------------------------------------------
-1. Test with small input:
-   $ ./Oopsie
-   Enter your name: Alice
-   Hello Alice
+Compile and run:
+    $ gcc -o oopsie main.c
+    $ ./oopsie
 
-2. Test with long input:
-   $ python3 -c "print('A'*32)" | ./Oopsie
-   $ python3 -c "print('A'*40)" | ./Oopsie
-   $ python3 -c "print('A'*60)" | ./Oopsie
-   [1]    Segmentation fault (core dumped)
+Test increasing input sizes:
+    $ python3 -c "print('A'*20)" | ./oopsie
+    $ python3 -c "print('A'*32)" | ./oopsie
+    $ python3 -c "print('A'*33)" | ./oopsie
+    $ python3 -c "print('A'*40)" | ./oopsie
+    $ python3 -c "print('A'*48)" | ./oopsie
+    $ python3 -c "print('A'*60)" | ./oopsie
+    Segmentation fault (core dumped)
 
-3. Inspect the crash with GDB:
-   $ gdb ./Oopsie
-   (gdb) run
-   Enter your name: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-   Program received signal SIGSEGV, Segmentation fault.
-   0x0000000000401234 in vulnerable ()
+Inspect the crash with GDB:
+    $ gdb ./oopsie
+    (gdb) run
+    Enter your name: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    Program received signal SIGSEGV, Segmentation fault.
+    0x0000000000401234 in vulnerable ()
 
-   Check the registers:
-   (gdb) info registers
-   Notice what value is in $rbp and where the instruction pointer is pointing!
+    (gdb) info registers
+    rip            0x4141414141414141    0x4141414141414141
+    rbp            0x4141414141414141    0x4141414141414141
 
+Notice:
+  - RIP = 0x4141414141414141 ('AAAAAAAA' in little-endian)
+  - RBP = 0x4141414141414141
+  - The crash happens because the return address was corrupted.
 
-[6. CONCEPTS LEARNED]
+Examine the stack:
+    (gdb) x/20gx $rsp
+    (shows 20 quadwords from current stack pointer)
+
+[6. CORE CONCEPTS]
 --------------------------------------------------------------------------------
-• Stack Memory    : How local variables and execution metadata reside together.
-• Buffer Size     : Fixed-size memory allocations and boundary limits.
-• Segmentation Fault: Hardware/OS signal generated when accessing unmapped memory.
-• Unchecked Input : Why obsolete functions like `gets()` must never be used.
-• Stack Framing   : How caller-saved registers and return addresses are organized.
+1. Stack Memory
+   Local variables, saved registers, and return addresses share the same
+   contiguous memory region. No hardware boundary separates them.
 
+2. Buffer Boundaries
+   `char buffer[32]` allocates exactly 32 bytes. The compiler emits no
+   runtime checks. Writing past `buffer[31]` is undefined behavior.
 
-[7. PROGRESSIVE HINTS]
+3. Segmentation Fault
+   Not a C error — a hardware exception (page fault) delivered by the OS
+   when the CPU accesses unmapped or protected memory. Here, corrupted RIP
+   points to invalid address 0x4141414141414141.
+
+4. Unchecked Input
+   `gets()` has no length parameter. It cannot be used safely. Modern
+   replacements: `fgets(buffer, sizeof(buffer), stdin)`.
+
+5. Stack Frame Structure
+   Caller pushes return address. Callee pushes RBP, sets new RBP = RSP.
+   Local variables at negative offsets from RBP. Return via `leave; ret`.
+
+6. Little-Endian Byte Order
+   0x4141414141414141 in memory appears as bytes: 41 41 41 41 41 41 41 41
+   (least significant byte at lowest address). 'A' = 0x41.
+
+[7. PROGRESSIVE EXPERIMENTS]
 --------------------------------------------------------------------------------
-Hint 1: What happens when you give the program more than 32 characters?
-        Try feeding 33, 40, 48, and 56 characters into the program.
+Experiment 1: Find the exact crash threshold
+  - Try 32, 33, 40, 41, 47, 48, 49 bytes.
+  - At which length does the program segfault?
 
-Hint 2: Run the program inside GDB (`gdb ./Oopsie`), type `run`, paste 60 'A's,
-        and observe the exact error message and the registers (`info registers`).
+Experiment 2: Observe register corruption in GDB
+  - Run with 48 'A's.
+  - Check `info registers` — which registers hold 0x41...?
 
-Hint 3: What is stored immediately after `buffer` in the stack frame? 
-        How does the CPU know where to return once `vulnerable()` finishes?
+Experiment 3: Visualize the stack
+  - In GDB: `x/24xb buffer` (examine 24 bytes from buffer start)
+  - Then `x/24xb buffer+32` (examine saved RBP and RIP)
+
+Experiment 4: Try non-crashing overflow
+  - 40 'A's overwrites RBP but not RIP.
+  - Program may appear to work but caller's frame is corrupted.
+
+Experiment 5: Replace gets() with fgets()
+  - Edit main.c: `fgets(buffer, sizeof(buffer), stdin);`
+  - Recompile. Test with 100 'A's. No crash.
+
+[8. KEY TAKEAWAYS]
+--------------------------------------------------------------------------------
+- Fixed-size buffers + unbounded input = overflow.
+- The stack stores both data (buffer) and control flow (RIP) adjacently.
+- Overwriting RIP redirects execution — the basis of code execution exploits.
+- Modern mitigations (stack canaries, ASLR, NX, PIE) make exploitation
+  harder, but the root cause remains: unchecked writes to fixed buffers.
+- Safe coding: always use bounded functions (`fgets`, `snprintf`, `read`
+  with explicit length).
+
+================================================================================
+FURTHER READING
+================================================================----------------
+- "Smashing the Stack for Fun and Profit" — Aleph One (Phrack 49)
+- Computer Systems: A Programmer's Perspective (CS:APP) — Ch. 3
+- CWE-121: Stack-based Buffer Overflow
 ================================================================================
