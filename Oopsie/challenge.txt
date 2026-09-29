@@ -49,6 +49,8 @@ Then try running the program normally.
 There is no need to guess the answer.
 Investigate it.
 
+Once your payload is ready try it on the server:
+    nc localhost 1338
 
 ================================================================================
 0XATTACK

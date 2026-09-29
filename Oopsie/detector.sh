@@ -6,6 +6,6 @@ if [ "$EXIT_CODE" -eq 139 ]; then
     echo "Buffer overflow detected! Here is your flag:"
     cat flag.txt
 else
-    echo "No flag for you yet, try overflowing the buffer!"
+    echo "No flag for you yet!"
 fi
-echo -e "\nCRTL + D to exit"
+echo -e "\nCRTL+D to exit"
