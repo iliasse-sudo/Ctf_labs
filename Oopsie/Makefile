@@ -1,16 +1,22 @@
 CC = gcc
-SRC = main.c detector.c
+SRC = main.c
 TARGET = oopsie
+ARCHIVE = Oopsie.tar.gz
+DIRECTORY = Oopsie
 
-all: $(TARGET)
+all: player
 
-server: main.c clean
+server: $(SRC)
 	$(CC) -o $(TARGET) $< 2>/dev/null
 
-$(TARGET): $(SRC) clean
-	$(CC) -o $@ detector.c
+player: $(SRC)
+	$(CC) -o $(TARGET) $<
+	mkdir -p $(DIRECTORY)
+	cp $(TARGET) $(SRC) challenge.txt $(DIRECTORY)
+	tar -czf $(ARCHIVE) $(DIRECTORY)
+	make clean
 
 clean:
-	rm -f $(TARGET)
+	rm -rf $(DIRECTORY) $(TARGET)
 
-.PHONY: all clean server
+.PHONY: all clean server player
