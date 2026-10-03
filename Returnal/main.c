@@ -3,7 +3,7 @@
 
 void win(void)
 {
-    puts("You found the secret!");
+    printf("You found the secret!\n");
     system("/bin/sh");
 }
 

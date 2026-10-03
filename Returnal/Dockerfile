@@ -1,10 +1,35 @@
+FROM gcc:13 AS builder
+
+WORKDIR /build
+
+COPY main.c Makefile ./
+
+RUN make server
+
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y gcc make && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /challenge
-COPY main.c Makefile flag.txt run.sh ./
-RUN make && chmod +x run.sh
+RUN useradd -m -s /bin/bash ctf
 
-EXPOSE 1338
-ENTRYPOINT ["./run.sh"]
+WORKDIR /home/ctf
+
+COPY flag.txt ./
+
+WORKDIR /home/ubuntu
+
+COPY --from=builder /build/returnal ./
+
+COPY run.sh ./
+
+RUN chown -R ctf:ctf /home/ctf && \
+#    chown -R ubuntu:ubuntu /home/ubuntu && \
+    chmod 755 /home/ubuntu/returnal /home/ubuntu/run.sh
+
+USER ctf
+
+EXPOSE 1339
+
+ENTRYPOINT ["/home/ubuntu/run.sh"]
