@@ -18,6 +18,6 @@ player: $(SRC)
 	$(MAKE) clean
 
 clean:
-	rm -rf $(DIRECTORY) $(TARGET)
+	rm -rf $(DIRECTORY)
 
 .PHONY: all clean server player

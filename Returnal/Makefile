@@ -18,6 +18,6 @@ server: $(SRC)
 	$(CC) $(CFLAGS) -o $(TARGET) $<
 
 clean:
-	rm -rf $(TARGET) $(Directory)
+	rm -rf $(Directory)
 
 .PHONY: all player server clean

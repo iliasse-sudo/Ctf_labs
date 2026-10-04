@@ -1,10 +1,5 @@
-FROM gcc:13 AS builder
+FROM ctf_builder AS builder
 
-WORKDIR /build
-
-COPY main.c Makefile ./
-
-RUN make server
 
 FROM ubuntu:22.04
 
@@ -20,12 +15,12 @@ COPY flag.txt ./
 
 WORKDIR /home/ubuntu
 
-COPY --from=builder /build/returnal ./
+COPY --from=builder /Returnal/returnal ./
 
 COPY run.sh ./
 
 RUN chown -R ctf:ctf /home/ctf && \
-#    chown -R ubuntu:ubuntu /home/ubuntu && \
+    chown -R root:root /home/ubuntu && \
     chmod 755 /home/ubuntu/returnal /home/ubuntu/run.sh
 
 USER ctf

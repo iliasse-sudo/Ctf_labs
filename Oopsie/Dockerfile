@@ -1,10 +1,5 @@
-FROM gcc:13 AS builder
+FROM ctf_builder AS builder
 
-WORKDIR /build
-
-COPY main.c Makefile ./
-
-RUN make server
 
 FROM ubuntu:24.04
 
@@ -16,7 +11,7 @@ RUN useradd -m -s /bin/bash ctf
 
 WORKDIR /home/ctf
 
-COPY --from=builder /build/oopsie ./
+COPY --from=builder /Oopsie/oopsie ./
 COPY flag.txt ./
 COPY run.sh ./
 COPY detector.sh ./
