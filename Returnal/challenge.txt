@@ -8,51 +8,50 @@ Binary   : returnal
 
 ## THE CHALLENGE
 
-A program is waiting for your input.
+    A program is waiting for your input.
 
-Somewhere inside the binary is a function that you normally cannot reach.
-Your job is to figure out how to make the program execute it.
+    Somewhere inside the binary is a function that you normally cannot reach.
+    Your job is to figure out how to make the program execute it.
 
-You have been given only the binary. There is no source code this time.
+    You have been given only the binary. There is no source code this time.
 
-Take some time to inspect the program and understand its memory layout
-before trying to build an exploit.
+    Take some time to inspect the program and understand its memory layout
+    before trying to build an exploit.
 
 ## YOUR MISSION
 
-Find the vulnerability.
-Determine how much input the program can safely handle.
-Investigate what happens when you go beyond that limit.
+    Find the vulnerability.
+    Determine how much input the program can safely handle.
+    Investigate what happens when you go beyond that limit.
 
-You may find the following tools useful:
+    You may find the following tools useful:
 
-    gdb
-    objdump
-    readelf
-    file
+        gdb
+        objdump
+        readelf
+        file
 
-Look for interesting functions inside the binary and think about how
-the program decides where to continue execution after `vulnerable()`
-returns.
-
-The objective is not simply to crash the program.
-
-Your goal is to control its execution and reach the hidden function.
+    The objective is not simply to crash the program.
+    Your goal is to control its execution and reach the hidden function.
 
 ## FIRST STEP
 
-Start by examining the binary:
+    Start by examining the binary:
 
-    file returnal
+        file returnal
 
-Then inspect its functions and try running it with different inputs.
-
-Use a debugger when you need to understand what is happening in memory.
+    Then inspect its functions and try running it with different inputs.
+    Use a debugger when you need to understand what is happening in memory.
 
 Once you have figured out how to redirect execution, test your payload
 against the server:
 
-    nc localhost 1339
+    (your_payload; cat) | nc localhost 1339
+
+The "cat" keeps stdin open after the payload is sent, allowing you to
+interact with the shell spawned by the program.
+
+If your exploit works, you should gain access to a shell.
 
 ================================================================================
 0XATTACK
