@@ -1,0 +1,130 @@
+================================================================================
+CHALLENGE 02: RETURN TO SENDER — RET2WIN
+================================================================================
+Difficulty : [★★☆☆☆] Easy
+Category   : Binary Exploitation (pwn) / Control Flow Hijacking
+Directory  : Returnal/
+================================================================================
+
+[1. OVERVIEW]
+--------------------------------------------------------------------------------
+In Challenge 01 (Oopsie), you learned that writing past the boundary of a buffer 
+can corrupt the stack and trigger a crash by overwriting the saved return address.
+
+Now, take control of that crash! 
+
+Instead of crashing the application with arbitrary junk like 'AAAA', you can 
+carefully place a specific memory address into the saved return address slot. 
+When the vulnerable function finishes executing, the CPU will pop your supplied 
+address into RIP (the Instruction Pointer) and jump straight into a function of 
+your choice: the `win()` function.
+
+This classic technique is known as "ret2win" (Return-to-Win).
+
+
+[2. CHALLENGE DESCRIPTION]
+--------------------------------------------------------------------------------
+"The source code has been removed. A binary awaits. Can you force the program 
+to take a detour into the secret function?"
+
+The binary contains:
+  • A `vulnerable()` function allocating a 64-byte buffer:
+        char buffer[64];
+        read(0, buffer, 256);
+  • An unused `win()` function:
+        void win(void) {
+            puts("You found the secret!");
+            system("/bin/sh");
+        }
+
+Your goal:
+Make the program execute `win()` instead of returning normally to `main()`.
+
+
+[3. BINARY SECURITY PROTECTIONS]
+--------------------------------------------------------------------------------
+Compiled with:
+  • Stack Canary : Disabled (-fno-stack-protector) -> No integrity cookie on stack
+  • PIE          : Disabled (-no-pie)              -> Code addresses are fixed!
+  • NX           : Enabled                        -> Stack is non-executable
+
+Because PIE (Position Independent Executable) is disabled, the address of `win()` 
+is constant and will NOT change between runs.
+
+
+[4. STACK LAYOUT & OFFSET CALCULATION]
+--------------------------------------------------------------------------------
+Inside `vulnerable()`, the stack layout on x86-64 looks like this:
+
+       High Addresses
+    |----------------------------------|
+    |  Saved Return Address (RIP) [8B] |  <-- TARGET: overwrite with &win
+    |----------------------------------|
+    |  Saved RBP (Base Pointer)   [8B] |  <-- Overwritten with padding
+    |----------------------------------|
+    |  buffer                     [64B]|  <-- read() writes here
+    |----------------------------------|
+       Low Addresses
+
+To overwrite the Return Address:
+  Offset = buffer size (64 bytes) + saved RBP (8 bytes) = 72 bytes.
+
+Note: In some compilers/alignments, the offset may differ slightly due to stack 
+alignment padding. You must verify the exact offset using GDB!
+
+
+[5. STEP-BY-STEP EXPLOITATION METHODOLOGY]
+--------------------------------------------------------------------------------
+1. Find the address of `win()`:
+   Open the binary in GDB:
+   $ gdb ./chall
+   (gdb) info functions win
+   or:
+   (gdb) print win
+   Example output: 0x0000000000401156
+
+2. Calculate the exact offset:
+   Inside GDB (with GEF or pwndbg):
+   (gdb) pattern create 100
+   (gdb) run
+   [paste pattern]
+   (gdb) pattern offset $rsp   (or look at the crash address)
+   Alternatively, test manually with 72 bytes of padding followed by "BBBBBBBB".
+
+3. Understand Little-Endian Format:
+   x86-64 architectures store multi-byte values in memory in little-endian order 
+   (least significant byte first).
+   If win is at 0x00401156:
+   In Python/pwntools: p64(0x401156) -> b"\x56\x11\x40\x00\x00\x00\x00\x00"
+
+4. Assemble the Exploit Payload:
+   Payload = [72 bytes of junk (padding)] + [p64(address_of_win)]
+
+5. Stack Alignment Tip (The 16-byte `ret` quirk):
+   On 64-bit Ubuntu/glibc systems, `system()` requires the stack pointer (`$rsp`) 
+   to be 16-byte aligned before calling instructions like `movaps`. If your exploit 
+   reaches `win()` but crashes inside `do_system`, add an extra `ret` gadget right 
+   before the address of `win()` to adjust the stack by 8 bytes!
+
+
+[6. CONCEPTS LEARNED]
+--------------------------------------------------------------------------------
+• Saved Return Address (RIP): The mechanism CPU functions use to return to callers.
+• Control Flow Hijacking    : Subverting normal program execution flow.
+• Little-Endian Encoding   : How integers and memory pointers are ordered in memory.
+• Binary Protections        : How flags like PIE and Stack Canaries protect binaries.
+• Disassembly with GDB      : Using `info functions`, `disassemble`, and break/run.
+
+
+[7. PROGRESSIVE HINTS]
+--------------------------------------------------------------------------------
+Hint 1: What happens when a function hits the `ret` assembly instruction? Where 
+        does it take the next address to execute from?
+
+Hint 2: Open the binary in GDB (`gdb ./chall`) and run `info functions`. Can you 
+        find the memory address where `win` resides?
+
+Hint 3: How many bytes do you need to write before reaching the saved return address?
+        Remember that on 64-bit systems, the saved RBP occupies 8 bytes right after 
+        the buffer.
+================================================================================

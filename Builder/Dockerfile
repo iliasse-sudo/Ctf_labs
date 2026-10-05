@@ -6,7 +6,7 @@ COPY Oopsie/main.c Oopsie/challenge.txt Oopsie/Makefile ./
 RUN make server && make player
 
 WORKDIR /Returnal
-COPY Returnal/main.c R0P_Me/challenge.txt Returnal/Makefile ./
+COPY Returnal/main.c Returnal/challenge.txt Returnal/Makefile ./
 RUN make server && make player
 
 # WORKDIR /R0P_Me
