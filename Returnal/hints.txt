@@ -1,0 +1,3 @@
+Look beyond the program's normal execution path.
+Compare how much data is read with how much space is available.
+Find out what controls where execution continues after the function returns.
