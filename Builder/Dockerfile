@@ -9,9 +9,9 @@ WORKDIR /Returnal
 COPY Returnal/main.c Returnal/challenge.txt Returnal/Makefile ./
 RUN make server && make player
 
-# WORKDIR /R0P_Me
-# COPY R0P_Me/main.c R0P_Me/challenge.txt R0P_Me/Makefile ./
-# RUN make server && make player
+WORKDIR /R0P_Me
+COPY R0P_Me/main.c R0P_Me/challenge.txt R0P_Me/Makefile ./
+RUN make server && make player
 
 # WORKDIR /Blind_Spot
 # COPY Blind_Spot/main.c Blind_Spot/challenge.txt Blind_Spot/Makefile ./

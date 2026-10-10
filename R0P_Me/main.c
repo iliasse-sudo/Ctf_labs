@@ -7,7 +7,7 @@ void win(unsigned long magic)
         return;
 
     puts("Correct!");
-    system("/bin/sh");
+    system("/bin/bash -i");
 }
 
 void __attribute__((naked)) gadget_pop_rdi(void)
