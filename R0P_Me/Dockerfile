@@ -12,8 +12,6 @@ WORKDIR /home/ctf
 
 COPY flag.txt ./
 
-# RUN echo "PS1='\[\033[1;32m\]ctf\[\033[0m\]@\[\033[1;34m\]R0P_Me\[\033[0m\]:\w\$ '" > /home/ctf/.bashrc
-
 RUN echo "PS1='\[\033[1;32m\]ctf@R0P_Me\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ '" > /home/ctf/.bashrc
 
 WORKDIR /home/ubuntu
