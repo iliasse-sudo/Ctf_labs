@@ -2,7 +2,7 @@
 RETURNAL
 ========
 
-Level    : Beginner
+Level    : Medium
 Category : Pwn / Binary Exploitation
 Binary   : returnal
 

@@ -4,7 +4,7 @@
 void win(void)
 {
     printf("You found the secret!\n");
-    system("/bin/sh");
+    system("/bin/bash -i");
 }
 
 void vulnerable(void)

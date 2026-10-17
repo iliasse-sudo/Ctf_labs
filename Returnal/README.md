@@ -1,6 +1,6 @@
 # RETURNAL
 
-**Level:** Beginner
+**Level:** Medium
 **Category:** Pwn / Binary Exploitation
 **Technique:** Stack Buffer Overflow / Return Address Overwrite
 **Difficulty:** ⭐⭐☆☆☆
@@ -58,7 +58,7 @@ The intended target is the hidden `win()` function:
 void win(void)
 {
     printf("You found the secret!\n");
-    system("/bin/sh");
+    system("/bin/bash -i");
 }
 ```
 

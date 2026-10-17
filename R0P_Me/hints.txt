@@ -1,0 +1,3 @@
+The return address is only one piece of the puzzle.
+Not all registers are equally important when a function is called.
+Pay attention to how function arguments are passed on this architecture.

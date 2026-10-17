@@ -1,7 +1,7 @@
 # RETURNAL — Solution
 
 **Category:** Pwn / Binary Exploitation
-**Difficulty:** Beginner
+**Difficulty:** Medium
 **Technique:** Stack Buffer Overflow / ret2win
 
 ---
@@ -45,7 +45,7 @@ The important functions are:
 void win(void)
 {
     printf("You found the secret!\n");
-    system("/bin/sh");
+    system("/bin/bash -i");
 }
 
 void vulnerable(void)
@@ -175,7 +175,7 @@ vulnerable()
    win()
      |
      v
-system("/bin/sh")
+system("/bin/bash -i")
 ```
 
 ---
@@ -395,7 +395,7 @@ You found the secret!
 and then executes:
 
 ```c
-system("/bin/sh");
+system("/bin/bash -i");
 ```
 
 which gives us a shell.
@@ -449,7 +449,7 @@ of the functions it calls expects.
 This is particularly relevant because `win()` calls:
 
 ```c
-system("/bin/sh");
+system("/bin/bash -i");
 ```
 
 If the stack is incorrectly aligned, the program can potentially crash inside
@@ -651,7 +651,7 @@ ret gadget
    win()
      |
      v
-system("/bin/sh")
+system("/bin/bash -i")
 ```
 
 The additional `ret` changes the stack alignment by 8 bytes before `win()`
@@ -706,7 +706,7 @@ If it successfully gives a shell, there is no reason to add anything else.
 If the program reaches `win()` but crashes during or after:
 
 ```c
-system("/bin/sh");
+system("/bin/bash -i");
 ```
 
 then investigate the stack alignment.
@@ -738,7 +738,7 @@ its stdout closes.
 
 That means `nc` eventually sees EOF on its stdin.
 
-If the exploit has spawned `/bin/sh`, the shell also depends on that input
+If the exploit has spawned `/bin/bash -i`, the shell also depends on that input
 stream for commands. Closing the stream means we cannot properly interact
 with the spawned shell.
 
@@ -764,7 +764,7 @@ python3 exploit.py
       win()
         |
         v
-    /bin/sh
+    /bin/bash -i
 ```
 
 After the Python script finishes, `cat` continues reading from our terminal
@@ -968,7 +968,7 @@ The `win()` function then executes:
 
 ```c
 printf("You found the secret!\n");
-system("/bin/sh");
+system("/bin/bash -i");
 ```
 
 giving the player access to a shell.
@@ -1017,7 +1017,7 @@ ret ----------------------+
              win()
                |
                v
-        system("/bin/sh")
+        system("/bin/bash -i")
                |
                v
           interactive

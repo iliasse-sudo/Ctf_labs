@@ -13,6 +13,8 @@ WORKDIR /home/ctf
 
 COPY flag.txt ./
 
+RUN echo "PS1='\[\033[1;32m\]ctf@Returnal\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ '" > /home/ctf/.bashrc
+
 WORKDIR /home/ubuntu
 
 COPY --from=builder /Returnal/returnal ./
