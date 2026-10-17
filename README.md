@@ -1,20 +1,24 @@
-# 0XATTACK
+# 0XATTACK — Binary Exploitation Labs
 
-A collection of beginner-friendly binary exploitation (pwn) challenges designed to introduce players to memory corruption and binary exploitation.
+A hands-on collection of beginner-friendly **binary exploitation (pwn) challenges** designed to introduce core concepts in software security through practical exercises.
+
+The project provides isolated challenge environments using Docker, allowing learners to explore vulnerabilities, analyze binaries, and develop exploitation techniques in a controlled setting.
 
 ## Challenges
 
-| Challenge | Level | Port | Topic |
-|---|---|---:|---|
-| **Oopsie** | Beginner | 1338 | Buffer overflow fundamentals |
-| **Returnal** | Beginner | 1339 | Return address overwrite |
-| **R0P_Me** | Beginner | 1340 | Return-oriented programming (ROP) |
+| Challenge | Difficulty | Topic |
+|---|---|---|
+| **Oopsie** | Beginner | Buffer overflow fundamentals |
+| **Returnal** | Beginner | Return address overwriting |
+| **R0P_Me** | Beginner | Return-oriented programming (ROP) |
+
+Additional challenges are in development.
 
 ## Requirements
 
-- Docker
+- [Docker](https://www.docker.com/)
 - Docker Compose
-- Basic knowledge of C and Linux
+- Basic familiarity with C and Linux
 
 ## Getting Started
 
@@ -25,21 +29,22 @@ git clone https://github.com/iliasse-sudo/Ctf_labs.git
 cd Ctf_labs
 ```
 
-Start the challenges:
+Make the scripts executable and start the challenge environments:
 
 ```bash
+chmod +x run.sh stop.sh
 ./run.sh
 ```
 
-Stop the challenges:
+To stop the environments:
 
 ```bash
 ./stop.sh
 ```
 
-## Connecting
+## Connecting to Challenges
 
-Connect to a challenge using Netcat:
+Once the environments are running, connect using Netcat:
 
 ```bash
 nc localhost 1338  # Oopsie
@@ -47,10 +52,20 @@ nc localhost 1339  # Returnal
 nc localhost 1340  # R0P_Me
 ```
 
+Refer to each challenge's documentation for its objectives and instructions.
+
+## Learning Objectives
+
+- Understand stack memory and function execution.
+- Identify common binary vulnerabilities.
+- Learn how return addresses can be overwritten.
+- Explore basic return-oriented programming techniques.
+- Practice analyzing and exploiting vulnerable binaries.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
 ## Disclaimer
 
-For educational purposes and authorized security testing only. Run the challenges in a controlled environment.
-
----
-
-**0XATTACK** — Learn, exploit, understand.
+This project is intended for educational purposes and authorized security testing only. Run the challenges in controlled environments and do not use the techniques against systems without explicit permission.
